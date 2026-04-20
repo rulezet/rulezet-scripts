@@ -99,7 +99,7 @@ def fetch_rules(
     for item in results:
         if not isinstance(item, dict):
             continue
-        if item.get("format") != "yara":
+        if str(item.get("format", "")).lower() != "yara":
             continue
         content = item.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -112,7 +112,7 @@ def fetch_rules(
                 description=str(item.get("description", "")),
                 author=str(item.get("author", "")),
                 creation_date=str(item.get("creation_date", "")),
-                format=str(item.get("format", "")),
+                format="yara",
                 content=content,
             )
         )
@@ -244,6 +244,7 @@ def scan_with_yara(
             file_matches.append(
                 {
                     "rule": getattr(match, "rule", ""),
+                    "rule_type": "yara",
                     "namespace": namespace,
                     "uuid": source_rule.uuid if source_rule else "",
                     "rule_url": source_rule.detail_url if source_rule else "",
