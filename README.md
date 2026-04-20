@@ -23,7 +23,7 @@ Fetch YARA rules from [Rulezet](https://rulezet.org/) and optionally run them lo
 
 #### Print matching rules:
 
-``bash
+```bash
 python3 rulezet-yara.py --search CVE-2025-53521 --print-rules
 ```
 
