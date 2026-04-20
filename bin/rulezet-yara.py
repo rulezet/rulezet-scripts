@@ -148,14 +148,35 @@ def compile_yara_rules(rules: List[RuleEntry]):
 
     # Use namespaces so duplicate rule names from different results don't collide.
     sources: Dict[str, str] = {}
+    skipped_rules: List[Dict[str, str]] = []
     for idx, rule in enumerate(rules, start=1):
         namespace = f"rulezet_{idx}_{sanitize_filename(rule.uuid or rule.title)}"
+        try:
+            # Compile each rule first so one bad rule does not stop the whole scan.
+            yara.compile(source=rule.content)
+        except Exception as exc:
+            skipped_rules.append(
+                {
+                    "title": rule.title or "<untitled>",
+                    "uuid": rule.uuid or "<no-uuid>",
+                    "error": str(exc),
+                }
+            )
+            continue
+
         sources[namespace] = rule.content
 
+    if not sources:
+        raise RuntimeError(
+            "Failed to compile YARA rules: all fetched rules failed compilation."
+        )
+
     try:
-        return yara.compile(sources=sources)
+        compiled = yara.compile(sources=sources)
     except Exception as exc:
         raise RuntimeError(f"Failed to compile YARA rules: {exc}") from exc
+
+    return compiled, skipped_rules
 
 
 def iter_scan_targets(path: Path, recursive: bool) -> Iterable[Path]:
@@ -324,7 +345,19 @@ def main() -> int:
 
     if args.run:
         try:
-            compiled = compile_yara_rules(rules)
+            compiled, skipped_rules = compile_yara_rules(rules)
+            if skipped_rules:
+                eprint(
+                    f"[!] Skipping {len(skipped_rules)} rule(s) that failed compilation:"
+                )
+                for skipped in skipped_rules:
+                    eprint(
+                        "    - "
+                        f"title={skipped['title']!r} "
+                        f"uuid={skipped['uuid']!r} "
+                        f"error={skipped['error']}"
+                    )
+
             scan_result = scan_with_yara(
                 compiled_rules=compiled,
                 target=args.run,
