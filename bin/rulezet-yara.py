@@ -31,6 +31,7 @@ import requests
 
 
 DEFAULT_API_BASE = "https://rulezet.org"
+DEFAULT_RULE_DETAIL_URL_PREFIX = "https://rulezet.org/rule/detail_rule/"
 DEFAULT_TIMEOUT = 30
 
 
@@ -43,6 +44,13 @@ class RuleEntry:
     creation_date: str
     format: str
     content: str
+
+    @property
+    def detail_url(self) -> str:
+        uuid = self.uuid.strip()
+        if not uuid:
+            return ""
+        return f"{DEFAULT_RULE_DETAIL_URL_PREFIX}{uuid}"
 
 
 def eprint(*args: object, **kwargs: object) -> None:
@@ -131,6 +139,8 @@ def print_rules(rules: List[RuleEntry]) -> None:
         print(f"===== RULE {idx} =====")
         print(f"Title       : {rule.title}")
         print(f"UUID        : {rule.uuid}")
+        if rule.detail_url:
+            print(f"Rule URL    : {rule.detail_url}")
         print(f"Author      : {rule.author}")
         print(f"Created     : {rule.creation_date}")
         print(f"Description : {rule.description}")
@@ -148,6 +158,7 @@ def compile_yara_rules(rules: List[RuleEntry]):
 
     # Use namespaces so duplicate rule names from different results don't collide.
     sources: Dict[str, str] = {}
+    namespace_to_rule: Dict[str, RuleEntry] = {}
     skipped_rules: List[Dict[str, str]] = []
     for idx, rule in enumerate(rules, start=1):
         namespace = f"rulezet_{idx}_{sanitize_filename(rule.uuid or rule.title)}"
@@ -165,6 +176,7 @@ def compile_yara_rules(rules: List[RuleEntry]):
             continue
 
         sources[namespace] = rule.content
+        namespace_to_rule[namespace] = rule
 
     if not sources:
         raise RuntimeError(
@@ -176,7 +188,7 @@ def compile_yara_rules(rules: List[RuleEntry]):
     except Exception as exc:
         raise RuntimeError(f"Failed to compile YARA rules: {exc}") from exc
 
-    return compiled, skipped_rules
+    return compiled, skipped_rules, namespace_to_rule
 
 
 def iter_scan_targets(path: Path, recursive: bool) -> Iterable[Path]:
@@ -200,6 +212,7 @@ def iter_scan_targets(path: Path, recursive: bool) -> Iterable[Path]:
 def scan_with_yara(
     compiled_rules,
     target: Path,
+    namespace_to_rule: Optional[Dict[str, RuleEntry]] = None,
     recursive: bool = False,
     timeout: Optional[int] = None,
     fast: bool = False,
@@ -226,10 +239,14 @@ def scan_with_yara(
 
         file_matches = []
         for match in matches:
+            namespace = getattr(match, "namespace", "")
+            source_rule = (namespace_to_rule or {}).get(namespace)
             file_matches.append(
                 {
                     "rule": getattr(match, "rule", ""),
-                    "namespace": getattr(match, "namespace", ""),
+                    "namespace": namespace,
+                    "uuid": source_rule.uuid if source_rule else "",
+                    "rule_url": source_rule.detail_url if source_rule else "",
                     "tags": list(getattr(match, "tags", []) or []),
                     "meta": dict(getattr(match, "meta", {}) or {}),
                 }
@@ -345,7 +362,7 @@ def main() -> int:
 
     if args.run:
         try:
-            compiled, skipped_rules = compile_yara_rules(rules)
+            compiled, skipped_rules, namespace_to_rule = compile_yara_rules(rules)
             if skipped_rules:
                 eprint(
                     f"[!] Skipping {len(skipped_rules)} rule(s) that failed compilation:"
@@ -361,6 +378,7 @@ def main() -> int:
             scan_result = scan_with_yara(
                 compiled_rules=compiled,
                 target=args.run,
+                namespace_to_rule=namespace_to_rule,
                 recursive=args.recursive,
                 timeout=args.scan_timeout,
                 fast=args.fast,
@@ -388,7 +406,14 @@ def main() -> int:
                     for mr in matched_rules:
                         rule = mr.get("rule", "")
                         namespace = mr.get("namespace", "")
-                        eprint(f"      * rule={rule} namespace={namespace}")
+                        uuid = mr.get("uuid", "")
+                        rule_url = mr.get("rule_url", "")
+                        line = f"      * rule={rule} namespace={namespace}"
+                        if uuid:
+                            line += f" uuid={uuid}"
+                        if rule_url:
+                            line += f" rule_url={rule_url}"
+                        eprint(line)
                         meta = mr.get("meta") or {}
                         if meta:
                             eprint(
