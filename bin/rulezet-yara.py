@@ -307,7 +307,7 @@ def main() -> int:
         eprint("[!] No YARA rules found for that search.")
         return 2
 
-    print(f"[+] Found {len(rules)} YARA rule(s) for search={args.search!r}")
+    eprint(f"[+] Found {len(rules)} YARA rule(s) for search={args.search!r}")
 
     if args.print_rules:
         print_rules(rules)
@@ -320,7 +320,7 @@ def main() -> int:
             return 1
 
         for path in written:
-            print(f"[+] Saved: {path}")
+            eprint(f"[+] Saved: {path}")
 
     if args.run:
         try:
@@ -341,24 +341,26 @@ def main() -> int:
         else:
             matches = scan_result.get("matches", [])
             if not matches:
-                print("[+] No matches.")
+                eprint("[+] No matches.")
             else:
-                print("[+] Matches:")
+                eprint("[+] Matches:")
                 for entry in matches:
                     file_name = entry.get("file", "<unknown>")
                     if "error" in entry:
-                        print(f"  - {file_name}: ERROR: {entry['error']}")
+                        eprint(f"  - {file_name}: ERROR: {entry['error']}")
                         continue
 
                     matched_rules = entry.get("matched_rules", [])
-                    print(f"  - {file_name}")
+                    eprint(f"  - {file_name}")
                     for mr in matched_rules:
                         rule = mr.get("rule", "")
                         namespace = mr.get("namespace", "")
-                        print(f"      * rule={rule} namespace={namespace}")
+                        eprint(f"      * rule={rule} namespace={namespace}")
                         meta = mr.get("meta") or {}
                         if meta:
-                            print(f"        meta={json.dumps(meta, ensure_ascii=False)}")
+                            eprint(
+                                f"        meta={json.dumps(meta, ensure_ascii=False)}"
+                            )
 
     return 0
 
