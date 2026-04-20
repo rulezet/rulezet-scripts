@@ -185,8 +185,39 @@ def compile_yara_rules(rules: List[RuleEntry]):
 
     try:
         compiled = yara.compile(sources=sources)
-    except Exception as exc:
-        raise RuntimeError(f"Failed to compile YARA rules: {exc}") from exc
+    except Exception:
+        # Fallback path: compile incrementally so we can keep loading rules
+        # that still work together even when one rule breaks aggregated compile.
+        incremental_sources: Dict[str, str] = {}
+        incremental_namespace_to_rule: Dict[str, RuleEntry] = {}
+        for namespace, source in sources.items():
+            trial_sources = dict(incremental_sources)
+            trial_sources[namespace] = source
+            try:
+                yara.compile(sources=trial_sources)
+            except Exception as exc:
+                source_rule = namespace_to_rule.get(namespace)
+                skipped_rules.append(
+                    {
+                        "title": (source_rule.title if source_rule else "") or "<untitled>",
+                        "uuid": (source_rule.uuid if source_rule else "") or "<no-uuid>",
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            incremental_sources[namespace] = source
+            if namespace in namespace_to_rule:
+                incremental_namespace_to_rule[namespace] = namespace_to_rule[namespace]
+
+        if not incremental_sources:
+            raise RuntimeError(
+                "Failed to compile YARA rules: all fetched rules failed compilation."
+            )
+
+        compiled = yara.compile(sources=incremental_sources)
+        sources = incremental_sources
+        namespace_to_rule = incremental_namespace_to_rule
 
     return compiled, skipped_rules, namespace_to_rule
 
