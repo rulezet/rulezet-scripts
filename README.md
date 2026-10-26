@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/rulezet-scripts.svg" width="360" alt="Rulezet Scripts">
+</p>
+
 # rulezet-scripts
 
 A collection of scripts to support the use of rulezet.org.
